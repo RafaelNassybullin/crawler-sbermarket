@@ -1,0 +1,150 @@
+// const hgchgc = 20340; //el
+    // fs.writeFile("test.html", await page.content(), function(err:any) {
+    //     if(err) {
+    //         return console.log(err);
+    //     }
+    //     console.log("The file was saved!");
+    // }); 
+// for (let r = 1; r <= Number(hgchgc); r++) {
+//   let ro = 0;
+//   console.log(ro + r);
+//   if (r % 100 == 0) {
+//     console.log(`${r} RR`);
+//   } else if (Number(hgchgc) === r) {
+//     console.log(`${r} RR`);
+//   }
+// }
+// let isWork = () => {
+//   return (
+//     <>
+//       <div>my name is... Bella Hadid</div>
+//     </>
+//   );
+// };
+
+// если страница 404 закрыть страницу https://otvet.mail.ru/question/236824412 Ой! Мы не нашли эту страницу :(
+    // если страница 18+ нажать на модалку https://otvet.mail.ru/question/236456625 вам уже исполнилось 18 лет;
+    // получить лучший ответ
+    // пагинация проверять и нажимать все элементы
+    // если нет https://otvet.mail.ru/question/235896055 голосование за лучший ответ считать на внешнем
+    // картинки в ответах...
+
+
+
+import puppeteer from "puppeteer";
+import fs from "fs";
+import { toCsv } from "@iwsio/json-csv-node";
+import { optionsQuestions, optionsAnswers } from "./configs";
+import { v4 as uuid } from "uuid";
+import {
+  countEl,
+  questionEl,
+  answersEl,
+  paginationMainEl,
+  timeEl,
+  authorEl,
+  descriptionEl,
+  authorAnswerEl,
+  timeAnswerEl,
+} from "./el";
+
+//среди поиска есть опросы отфильтровать по голосам или цифре ответов
+
+(async () => {
+  const browser = await puppeteer.launch({ headless: false });
+  try {
+    const page = await browser.newPage();
+
+    const dataQuestion = [];
+    const dataAnswers = [];
+
+    await page.goto("https://otvet.mail.ru/question/232960631", {
+      waitUntil: "load",
+    });
+
+    const question = await page.waitForSelector(questionEl);
+    const questionValue = await question?.evaluate((el) => el.textContent);
+
+    const description = await page.$(descriptionEl);
+    const descriptionValue = await description?.evaluate(
+      (el: any) => el.textContent
+    );
+
+    const author = await page.waitForSelector(authorEl);
+    const authorValue = await author?.evaluate((el) => el.textContent);
+
+    const time = await page.waitForSelector(timeEl);
+    const timeValues = await time?.evaluate((el) => el.getAttribute("title"));
+
+    const count = await page.waitForSelector(countEl);
+    const countValue = await count?.evaluate((el) => el.textContent);
+
+    const id = uuid();
+
+    dataQuestion.push({
+      id,
+      author: authorValue
+        ?.split(" ")
+        .filter((word: string) => word !== "")
+        .join(" "),
+      question: questionValue,
+      description: descriptionValue,
+      time: timeValues,
+      likes: `${Math.floor(Math.random() * 15)}`,
+      dislikes: `${Math.floor(Math.random() * 7)}`,
+    });
+
+    await page.click(paginationMainEl);
+
+    for (let r = 1; r < Number(countValue?.match(/\d+/)) + 1; r++) {
+      let ro = 0;
+      const answers = await page.waitForSelector(answersEl(r));
+      const answersValue = await answers?.evaluate((el) => el.textContent);
+      const authors = await page.waitForSelector(authorAnswerEl(r));
+      const authorsValue = await authors?.evaluate((el) => el.textContent);
+      const times = await page.waitForSelector(timeAnswerEl(r));
+      const timesValue = await times?.evaluate((el) =>
+        el.getAttribute("title")
+      );
+
+      dataAnswers.push({
+        id: uuid(),
+        questions_id: id,
+        author: authorsValue
+          ?.split(" ")
+          .filter((word: string) => word !== "")
+          .join(" "),
+        answer: answersValue?.replace(/\n/g, ''),
+        replyToUser: "",
+        replyAnswer: "",
+        time: timesValue,
+        likes: `${Math.floor(Math.random() * 15)}`,
+        dislikes: `${Math.floor(Math.random() * 4)}`,
+      });
+    }
+
+    const name = uuid();
+    let resultQuestion = await toCsv(dataQuestion, optionsQuestions);
+    let resultAnswers = await toCsv(dataAnswers, optionsAnswers);
+
+    const streamOne = fs.createWriteStream(
+      `csv/questions/questions-${name}.csv`
+    );
+
+    streamOne.once("open", () => {
+      streamOne.write(resultQuestion);
+      streamOne.end();
+    });
+
+    const streamTwo = fs.createWriteStream(`csv/answers/answers-${name}.csv`);
+
+    streamTwo.once("open", () => {
+      streamTwo.write(resultAnswers);
+      streamTwo.end();
+    });
+  } catch (err) {
+    console.error(err);
+  } finally {
+    await browser.close();
+  }
+})();
